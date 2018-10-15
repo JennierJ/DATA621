@@ -1,0 +1,201 @@
+---
+title: "Data621_Homework2"
+author: "Jenny"
+date: "October 14, 2018"
+output: pdf_document
+---
+
+install.packages("caret")
+install.packages("lattice")
+install.packages("rlang")
+install.packages("ggplot2")
+install.packages("pROC")
+install.packages("caret")
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##  Download the dataset and read data.
+
+```{r}
+classification_output_data <- read.csv("https://raw.githubusercontent.com/JennierJ/DATA621/master/Homework2/classification-output-data.csv", header = TRUE)
+
+head(classification_output_data)
+```
+
+##  Raw Confusion Matrix
+
+
+```{r}
+Target <- classification_output_data$class
+Model <- classification_output_data$scored.class
+
+confusion_matrix <- table(Model, Target)
+
+
+colnames(confusion_matrix) <- c("Target Negative", "Target Positive")
+rownames(confusion_matrix) <- c("Model Negative", "Model Positive")
+#confusion_matrix <- table(classification_output_data$class, classification_output_data$scored.class)
+
+confusion_matrix
+```
+
+### The rows in the confusion matrix represent the predicted class, and the columns represent the actual class.
+
+##  Function for accuracy of the predictions.
+```{r}
+accuracy <- function(con_df){
+  Target <- con_df$class
+  Model <- con_df$scored.class
+  confusion_matrix <- table(Model, Target)
+  TN <- confusion_matrix[1,1]
+  TP <- confusion_matrix[2,2]
+  FN <- confusion_matrix[1,2]
+  FP <- confusion_matrix[2,1]
+
+  con_accuracy <- (TP + TN)/ (TP + FP + TN + FN)
+  return(con_accuracy)
+}
+
+(accuracy <- accuracy(classification_output_data))
+```
+
+##  Funcion for classification error rate of the predictions
+```{r}
+classificaion_Error_Rate <- function(con_df){
+  Target <- con_df$class
+  Model <- con_df$scored.class
+  confusion_matrix <- table(Model, Target)
+  TN <- confusion_matrix[1,1]
+  TP <- confusion_matrix[2,2]
+  FN <- confusion_matrix[1,2]
+  FP <- confusion_matrix[2,1]
+  
+  error_rate <- (FP + FN)/ (TP + FP + TN + FN)
+  return(error_rate)
+}
+
+(classificaion_Error_Rate <- classificaion_Error_Rate(classification_output_data))
+
+# Verify the sum of accuracy and error
+accuracy + classificaion_Error_Rate
+
+```
+
+##  Function for the precision of the predictions
+```{r}
+precision <- function(con_df){
+  Target <- con_df$class
+  Model <- con_df$scored.class
+  confusion_matrix <- table(Model, Target)
+  TN <- confusion_matrix[1,1]
+  TP <- confusion_matrix[2,2]
+  FN <- confusion_matrix[1,2]
+  FP <- confusion_matrix[2,1]
+  
+  precision_value <- ((TP)/ (TP + FP))
+  return(precision_value)
+}
+
+(precision <- precision(classification_output_data))
+
+```
+
+##  Function for the sensitivity
+```{r}
+sensitivity <- function(con_df){
+  Target <- con_df$class
+  Model <- con_df$scored.class
+  confusion_matrix <- table(Model, Target)
+  TN <- confusion_matrix[1,1]
+  TP <- confusion_matrix[2,2]
+  FN <- confusion_matrix[1,2]
+  FP <- confusion_matrix[2,1]
+  
+  sensitivity_value <- ((TP)/ (TP + FN))
+  return(sensitivity_value)
+}
+
+(sensitivity <- sensitivity(classification_output_data))
+
+```
+
+##  Function for the specificity
+```{r}
+specificity <- function(con_df){
+  Target <- con_df$class
+  Model <- con_df$scored.class
+  confusion_matrix <- table(Model, Target)
+  TN <- confusion_matrix[1,1]
+  TP <- confusion_matrix[2,2]
+  FN <- confusion_matrix[1,2]
+  FP <- confusion_matrix[2,1]
+  
+  specificity_value <- ((TN)/ (TN + FP))
+  return(specificity_value)
+}
+
+(specificity <- specificity(classification_output_data))
+
+```
+
+##  F1 scores function
+```{r}
+F1_scores <- function(con_df){
+  Target <- con_df$class
+  Model <- con_df$scored.class
+  confusion_matrix <- table(Model, Target)
+  TN <- confusion_matrix[1,1]
+  TP <- confusion_matrix[2,2]
+  FN <- confusion_matrix[1,2]
+  FP <- confusion_matrix[2,1]
+  
+  precision_value <- ((TP)/ (TP + FP))
+  sensitivity_value <- ((TP)/ (TP + FN))
+  F1_scores_value <- 2 * precision_value * sensitivity_value / (precision_value + sensitivity_value)
+  return(F1_scores_value)
+}
+
+(F1_scores <- F1_scores(classification_output_data))
+
+```
+
+## F1 Range
+```{r}
+Precisions <- runif(100000, min = 0, max = 1)
+Sensitivities <- runif(100000, min = 0, max = 1)
+
+max( 2* Precisions * Sensitivities / (Precisions + Sensitivities) )
+
+```
+
+
+
+## Caret package
+```{r}
+
+library(lattice)
+library(ggplot2)
+library(caret)
+
+df_caret <- confusionMatrix(factor(classification_output_data$scored.class),
+                            factor(classification_output_data$class)
+)
+
+df_caret
+
+```
+
+
+
+## pROC package
+```{r}
+
+
+#library(ggplot2)
+library(pROC)
+
+roc(classification_output_data$scored.class, classification_output_data$scored.probability, plot=T)
+
+```
