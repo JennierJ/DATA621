@@ -1,0 +1,207 @@
+---
+title: "DATA621_Homework3"
+author: "Jenny"
+date: "November 4, 2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+install.packages("leaps")
+install.packages("lattice")
+
+
+```{r }
+
+library(caret)
+library(corrplot)
+library(ggplot2)
+library(reshape2)
+library(leaps)
+```
+
+##  Introduction
+
+### In this homework, I will explore, analyze and model a data set containing information on crime for various neighborhoods of a major city. Each record has a response variable indicating whether or not the crime rate is above the median crime rate (1) or not (0).
+### My objective is to build a binary logistic regression model on the training data set to predict whether the neighborhood will be at risk for high crime levels. I will provide classifications and probabilities for the evaluation data set using my binary logistic regression model. 
+
+
+
+### Read dataset
+
+
+```{r }
+train_data <- read.csv("https://raw.githubusercontent.com/JennierJ/DATA621/master/Homework3/crime-training-data.csv", header = TRUE)
+eval_data <- read.csv("https://raw.githubusercontent.com/JennierJ/DATA621/master/Homework3/crime-evaluation-data.csv")
+
+head(train_data)
+```
+
+##  1. Data Exploration & Data Visulization
+```{r }
+dim(train_data)
+summary(train_data)
+```
+### The training dataset has 466 rows with 13 variables, with no NA values. 
+
+## 1.1. Histograms
+```{r }
+v <- melt(train_data)
+
+ggplot(v, aes(value)) + geom_histogram(fill = "#FF9999") + facet_wrap(~variable, 
+                                                                      scales = "free")
+```
+### From the histograms above, it looks like that the variable zn, dis and age are skewed.
+
+## 1.2 Density
+```{r }
+ggplot(v, aes(value)) + geom_density(fill = "#FF9999") + facet_wrap(~variable, 
+                                                                      scales = "free")
+```
+
+## 1.3 Correlation
+```{r }
+corrplot(cor(train_data), method = "color")
+
+```
+### The correlation plot has shown that how variable in the dataset are related to each other.
+
+## 2. Data Preparation
+
+
+## 2.1. Data Transformation
+### I would like to do log transformation to medv and rad.
+```{r }
+train_data$lgmedv <- log(train_data$medv)
+train_data$lgrad <- log(train_data$rad)
+
+head(train_data)
+
+
+```
+
+## 3. Build Model
+```{r }
+pairs(train_data, col = train_data$target)
+```
+#### I would like to use two methods to create models. 
+
+### 3.1 Logistic Regression Backward Selection
+```{r }
+glm.fit = glm(train_data$target ~ train_data$zn + train_data$indus + train_data$chas + train_data$nox
+              + train_data$rm + train_data$age + train_data$dis + train_data$lgrad + train_data$tax +
+                train_data$ptratio + train_data$black + train_data$lstat + train_data$lgmedv, data = train_data,
+              family = binomial)
+summary(glm.fit)
+```
+
+#### In the summary of model, I would like to remove the variable with a P value higher than 0.05, - variable rm
+```{r }
+glm.fit1 = glm(train_data$target ~ train_data$zn + train_data$indus + train_data$chas + train_data$nox
+              +  train_data$age + train_data$dis + train_data$lgrad + train_data$tax +
+                train_data$ptratio + train_data$black + train_data$lstat + train_data$lgmedv, data = train_data,
+              family = binomial)
+summary(glm.fit1)
+```
+
+#### - variable indus
+```{r }
+glm.fit2 = glm(train_data$target ~ train_data$zn + train_data$chas + train_data$nox
+               +  train_data$age + train_data$dis + train_data$lgrad + train_data$tax +
+                 train_data$ptratio + train_data$black + train_data$lstat + train_data$lgmedv, data = train_data,
+               family = binomial)
+summary(glm.fit2)
+```
+
+#### - variable chas
+```{r }
+glm.fit3 = glm(train_data$target ~ train_data$zn + train_data$nox
+               +  train_data$age + train_data$dis + train_data$lgrad + train_data$tax +
+                 train_data$ptratio + train_data$black + train_data$lstat + train_data$lgmedv, data = train_data,
+               family = binomial)
+summary(glm.fit3)
+```
+
+#### - variable zn
+```{r }
+glm.fit4 = glm(train_data$target ~ train_data$nox
+               +  train_data$age + train_data$dis + train_data$lgrad + train_data$tax +
+                 train_data$ptratio + train_data$black + train_data$lstat + train_data$lgmedv, data = train_data,
+               family = binomial)
+summary(glm.fit4)
+```
+
+#### - variable black
+```{r }
+glm.fit5 = glm(train_data$target ~ train_data$nox
+               +  train_data$age + train_data$dis + train_data$lgrad + train_data$tax +
+                 train_data$ptratio + train_data$lstat + train_data$lgmedv, data = train_data,
+               family = binomial)
+summary(glm.fit5)
+```
+
+#### - variable lstat
+```{r }
+glm.fit6 = glm(target ~ nox
+               +  age + dis + lgrad + tax +
+                 ptratio + lgmedv, data = train_data,
+               family = binomial)
+summary(glm.fit6)
+```
+#### Now that the model glm.fit 6 are having variables left with P value lower than 0.05. 
+
+### 3.2 Lead Model Selection
+
+#### The leaps packages is helping to generate all subset regression models. 
+```{r }
+regfit.full = regsubsets(target~., data = train_data, nvmax = 15)
+reg.summary = summary(regfit.full)
+reg.summary
+names(reg.summary)
+plot(reg.summary$cp, xlab = "Number of Variables", ylab = "Cp")
+which.min(reg.summary$cp)
+points(5, reg.summary$cp[5], pch = 20, col = "red")
+
+glm.fit7 = glm(train_data$target ~ train_data$nox
+               +  train_data$age + train_data$ptratio + train_data$medv + train_data$lgrad, data = train_data,
+               family = binomial)
+summary(glm.fit7)
+```
+#### The model glm.fit7 is the "best" model that with lowest CP and picked by leap pacakge
+
+
+## 4. Model Selection
+### Let's see the factor of model glm.fit6
+```{r }
+summary(glm.fit6)
+glm.probs = predict(glm.fit6, data = train_data, type = "response")
+
+Matrix6 <- confusionMatrix(data = factor(ifelse(glm.probs > 0.5, 1, 0)), reference = factor(train_data$target),
+                           positive = "1")
+Matrix6
+```
+
+### And the factor of model glm.fit7
+```{r }
+summary(glm.fit7)
+glm.probs = predict(glm.fit7, data = train_data, type = "response")
+
+Matrix7 <- confusionMatrix(data = factor(ifelse(glm.probs > 0.5, 1, 0)), reference = factor(train_data$target),
+                           positive = "1")
+Matrix7
+```
+
+## Using model glm.fit6 to predict the target with evaluation_data 
+```{r }
+eval_data$lgrad <- log(eval_data$rad)
+eval_data$lgmedv <- log(eval_data$medv)
+glm.probs.pred = predict(glm.fit6, newdata = eval_data, type = "response")
+predtarget <- ifelse(glm.probs.pred > 0.5, 1, 0)
+eval_data$pred <- predtarget
+eval_data
+table(predtarget)
+summary(glm.probs.pred)
+```
+
