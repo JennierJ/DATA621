@@ -1,0 +1,116 @@
+---
+title: "DATA621_Homework4"
+author: "Jenny"
+date: "November 30, 2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+install.packages("DataExplorer")
+install.packages("corrplot")
+install.packages("leaps")
+install.packages("mlogit")
+install.packages("lattice")
+
+```{r }
+
+library(ggplot2)
+library(stringr)
+library(reshape2)
+```
+
+# Introduction
+### In this homework, I will explore, analyze and model a data set containing approximately 8000 records representing a customer at an auto insurance company.Each record has two response variables. The first response variable, TARGET_FLAG, is a 1 or a 0. A "1" means that the person was in a car crash. A zero means taht the person was not in a car crash. The second response variable is TARGET_AMT. This value is zero if the person did not crash their car. But if they did crash their car, this number will be a value greater than zero. 
+### My objective is to build multiple linear regression and binary logistic regression models on the training data to predict the probability 
+# that a person will crash their car and also the amount of money it will cost if the person does crash their car. 
+
+
+### Read the data set
+
+
+```{r }
+train_data <- read.csv("https://raw.githubusercontent.com/JennierJ/DATA621/master/Homework4/insurance_training_data.csv")
+eval_data <- read.csv("https://raw.githubusercontent.com/JennierJ/DATA621/master/Homework4/insurance-evaluation-data.csv")
+```
+
+## Data Exploration and Cleaning
+```{r }
+head(train_data)
+summary(train_data)
+train_data <- train_data[,-1]
+eval_data <- eval_data[,-1]
+```
+### Remove the unwanted characters from the data set fields.
+```{r }
+for(column in c("INCOME","HOME_VAL","BLUEBOOK","OLDCLAIM"))
+{
+  train_data[,column] <- str_replace_all(train_data[,column],pattern='\\$',replace='')
+  train_data[,column] <- str_replace_all(train_data[,column],pattern=',',replace='')
+  train_data[,column] <- as.numeric(as.vector(train_data[,column]))
+}
+
+train_data[sapply(train_data, is.factor)] <- lapply(train_data[sapply(train_data, is.factor)], 
+                                        function(x) str_replace(x,"z_|<",""))
+
+for(column in c("INCOME","HOME_VAL","BLUEBOOK","OLDCLAIM"))
+{
+  eval_data[,column] <- str_replace_all(eval_data[,column],pattern='\\$',replace='')
+  eval_data[,column] <- str_replace_all(eval_data[,column],pattern=',',replace='')
+  eval_data[,column] <- as.numeric(as.vector(eval_data[,column]))
+}
+
+eval_data[sapply(eval_data, is.factor)] <- lapply(eval_data[sapply(eval_data, is.factor)], 
+                                                    function(x) str_replace(x,"z_|<",""))
+```
+
+## Data Preparation 
+```{r }
+summary(train_data)
+nrow(train_data)
+# Replacing N/A with mean for calculation
+train_data$AGE[is.na(train_data$AGE)] <- mean(train_data$AGE, na.rm=TRUE)
+train_data$YOJ[is.na(train_data$YOJ)] <- mean(train_data$YOJ, na.rm=TRUE)
+train_data$INCOME[is.na(train_data$INCOME)] <- mean(train_data$INCOME, na.rm=TRUE)
+train_data$HOME_VAL[is.na(train_data$HOME_VAL)] <- mean(train_data$HOME_VAL, na.rm=TRUE)
+train_data$CAR_AGE[is.na(train_data$CAR_AGE)] <- mean(train_data$CAR_AGE, na.rm=TRUE)
+
+```
+
+
+##  Histograms
+```{r }
+ggplot(melt(train_data), aes(x=value)) + facet_wrap(~variable, scale="free") + geom_histogram(bins=50)
+```
+
+##  Boxplot
+```{r }
+ggplot(melt(train_data), aes(x=factor(variable), y=value)) + facet_wrap(~variable, scale="free") + geom_boxplot()
+```
+
+
+## Build Model
+```{r }
+# Logistic Regression with all variables
+glm.fit = glm(TARGET_FLAG ~ . - TARGET_AMT, data = train_data,
+              family = binomial)
+summary(glm.fit)
+# Exclude the predictor that are not significant
+glm.fit1 = glm(TARGET_FLAG ~ KIDSDRIV + INCOME + PARENT1 + HOME_VAL
+               + MSTATUS + JOB, data = train_data,
+               family = binomial)
+summary(glm.fit1)
+```
+
+## Using selected model to predict evaluation dataset 
+```{r }
+glm.probs.pred = predict(glm.fit1, newdata = eval_data, type = "response")
+predtarget <- ifelse(glm.probs.pred > 0.5, 1, 0)
+eval_data$pred <- predtarget
+eval_data
+table(predtarget)
+summary(glm.probs.pred)
+```
+
