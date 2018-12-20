@@ -1,0 +1,1209 @@
+---
+title: 'Data 621 Final Project: Predicting Fertility Rates'
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+date: "December 20, 2018"
+---
+
+
+
+##Authors
+#####Vikas Sinha
+#####Luisa Velasco
+#####Dan Wigodsky
+#####Sarah Wigodsky
+#####Zhenni Xie
+
+##Abstract
+
+The aim is to create a model that will predict the fertility rate of a country.  Models were built using data taken from the United Nations and chose to consider the effect of carbon dioxide emissions, cellular subscriptions, employment to population ratio, the poorest quintile's share in income, maternal mortality per 100,000 births, the percent of children sleeping under insecticide treated bed nets, the percent unmet family planning need, the percent of urban population living in slums, the ratio of literacy rates between women and men, and the net migration rate.  There was a great deal of missing data.  To address this, multiple strategies were used, including downloading data from other sources and the imputing the median value of the variable by region in the world.  Multiple linear regression, principal component analysis, Poisson, negative binomial and zero inflated models were built.  The most successful model was built using principal component analysis and showed a positive correlation between fertility rate and the percent of children sleeping under insecticide treated bed nets, the percent unmet family planning need and the percent of urban population living in slums.  There is a negative correlation between fertility rate and ratio of literacy rates between women and men and cellular subscriptions.
+
+
+##Key Words
+
+Fertility Rate - Average number of children a woman has over her life
+
+Slums - Area in a city that is inhabited by impoverished people.  It is overcrowded, lacking in safety and the homes are of poor quality.
+
+Literacy Rate - Ratio of people over 15 years old who can read and write as compared with the total population over 15 
+
+## Introduction
+
+Accurate knowledge of population trends is needed for formulation of effective policies for addressing the changing needs and requirements of populations across the globe. Forecasts based on projections of fertility, mortality and migration rates are used for many purposes, such as predicting the demands for food, water, medical services and education, and the impact on labor markets, pension systems and the environment [2].
+
+Although current data on population is available from sources such as the United Nations and the World Bank, there is a need for accurate population projections for longer time horizons. Prediction of fertility rates is a key component of population projections.
+
+Together with migration and mortality rates, fertility rates is a key indicator of demographic change, including the age structure of future populations. The total fertility rate (TFR) is the average number of children a woman would bear if she survived through the end of the reproductive age span, experiencing at each age the age-specific fertility rates of that period [2].
+
+## Prior Work
+
+Probabilistic methods are commonly used to project future fertility rates [1]. Since the assumptions underlying the probabilistic models affect the sensitivity of the projections, a number of different projections are produced, corresponding with each underlying assumption. In the current literature, those underlying assumptions are:  (1) medium-fertility assumption; (2) high-fertility assumption;  (3)  low-fertility assumption;  (4)  constant-fertility  assumption;  (5)  instant-replacement assumption. The median trajectory of the projections constitutes the medium-fertility assumption.
+
+In *Modelling Fertility: A Semi-Parametric Approach* (Oberhofer and Reichsthaler, 2004) the authors present a categorical model of fertility based on the Generalized Linear Model. For predictor variables, they used only one factor -- the age of the mother. This variable was modeled as a Bernoulli random variable, and the technique of Local Likelihood Estimation was used. Other factors such as marital status and ethnic origin were available but not used in the model.
+
+In *Modelling Fertility: A Semi-Parametric Approach* (Oberhofer and Reichsthaler, 2004) the authors present a categorical model of fertility based on the Generalized Linear Model. For predictor variables, they used only one factor -- the age of the mother. This variable was modeled as a Bernoulli random variable, and the technique of Local Likehood Estimation was used. Other factors such as marital status and ethnic origin were available but not used in the model.
+
+## Different Models for Different Phases of Growth
+
+The latest models are based on a demographic transition theory to model demographic changes: the theory postulates three distinct phases of demographic growth to account for different patterns observed across countries of the world. Phase I is distinguished by high fertility rates and is prior to transitions. Phase II corresponds to low fertility rates. In Phase III, a time series model is used to project further fertility change, based on the assumption that in
+the long run the levels fluctuate around country-specific levels based on a Bayesian hierarchical model.
+
+The revised model of United Nations Population Division uses three separate models for Fertility rate projections based on the different phases of the Fertility Transition. The model is described in detail in Alkema et al (2011). Further, it is believed that all countries have begun or already completed their Fertility Transition. The pace of the fertility decline is based on a double-logistic (A double-logistic function is a sum of two logistic functions) decline function which depends on the current fertility level. The model is hierarchical because in addition to the country-level information, a second level is used to determine the parameters of the double-logistic function; this second level takes into account the information for all countries) [3]. Thus the hierarchical model includes two levels for country and world.
+
+##DATA EXPLORATION
+
+install.packages("tidyr")
+
+
+```{r install_libraries, echo=FALSE, warning=FALSE, message=FALSE}
+
+library(tidyr)
+library(dplyr)
+library(corrplot)
+library(ggplot2)
+library(car)
+library(rpart)
+```
+
+
+```{r load_data, echo=FALSE, warning=FALSE, message=FALSE}
+fertility <- read.csv("https://raw.githubusercontent.com/swigodsky/Data621/master/fertility_rate_predictionUN.csv", stringsAsFactors = FALSE)
+country_code_df <- read.csv("https://raw.githubusercontent.com/swigodsky/Data621/master/country_codes.csv", stringsAsFactors = TRUE)
+country_code_df$region_num <- as.factor(country_code_df$region_num)
+fertility <- left_join(fertility,country_code_df,by="country_code")
+fertility <- subset(fertility, select=-c(order,country_number))
+head(fertility)
+#nrow(fertility)
+```
+
+The data set is collected from http://data.un.org/Explorer.aspx?d=WHO.  It consists of 214 rows, where each row represents the data from a different country.  A model to predict the fertility rate will be built using the following variables:
+
+  - carbon_dioxide_emissions - carbon dioxide emissions in kilotonnes
+  - cell_subs_per_100 - Cell subscriptions per 100 population(2014)
+  - employment_to_pop_ratio - employment to total population ratio
+  - female_employment_to_pop_ratio - female employee to population ratio
+  - lowest_quint_income_share - poorest quintile's share in income
+  - maternal_mortality - maternal mortality per 100,000 live births
+  - percent_children_malaria_nets - percent of children sleeping under insecticide-treated bed nets
+  - unmet_family_planning_need - percent unmet family planning need
+  - urban_pop_in_slums - percent urban population living in slums
+  - women_men_literacy_ratio - women to men parity index, as ratio of literacy rates
+  - net_migration_per_1000 - net migration rate per 1000
+  - region_num - number that signifies the region the country resides in
+      - 0 - Antarctica
+      - 1 - Asia
+      - 2 - Caribbean
+      - 3 - Central America
+      - 4 - Eastern Africa
+      - 5 - Europe
+      - 6 - European Union
+      - 7 - Middle Africa
+      - 8 - Middle East
+      - 9 - North America
+      - 10 - Northern Africa
+      - 11 - Oceania
+      - 12 - South America
+      - 13 - South Africa
+      - 14 - Western Africa
+      
+The characterizations of the regions was taken from https://internetworldstats.com/list1.htm.  
+
+A summary of the data can be seen below:  
+
+```{r summary_stats, echo=FALSE}
+summary(fertility)
+```
+
+The number of countries in each region is found.
+```{r countries_per_region, echo=FALSE}
+country_per_region <- fertility
+country_per_region <- country_per_region %>%
+  select(region_num,region)
+country_per_region <- as.data.frame(table(country_per_region$region_num))
+colnames(country_per_region) <- c("region_num","NumCountriesPerRegion")
+#country_per_region
+```
+
+A challenge of the data set is the large number of missing values.  Carbon dioxide emissions is missing 172 values, cellular subscriptions per 100 population is missing 12 values, employment to population ratio is missing 107 values, female employment to population ratio is missing 111 values, lowest quintile share in income is missing 190 values, maternal mortality per 100,000 live births is missing 139 values, percent of children sleeping under insecticide treated bed nets is missing 155 values, unmet family planning need is missing 78 values, percentage of urban population living in slums in missing 133 values, the literacy ratio between women to men is missing 146 values, and the net migration per 1000 is missing 20 values.
+
+####Percent of Children Sleeping Under Insecticide Treated Bed Nets
+There are 155 missing values.  The likelihood of these values being zero We will be investigated by exploring the relationship between this variable and region.
+```{r bed_nets_region_num, echo=FALSE}
+bed_nets_region <- fertility
+bed_nets_region <- bed_nets_region %>%
+  filter(is.na(percent_children_malaria_nets)) %>%
+  select(region_num)
+count_na_by_region <- as.data.frame(table(bed_nets_region$region_num))
+colnames(count_na_by_region) <- c("region_num","Freq")
+count_na_by_region <- count_na_by_region %>%
+  left_join(country_code_df,by="region_num") %>%
+  left_join(country_per_region,by="region_num") %>%
+  select(region_num,region,Freq,NumCountriesPerRegion) %>%
+  mutate(NumCountriesNA=Freq) %>%
+  mutate(NumCountriesPerRegion=NumCountriesPerRegion) %>%
+  mutate(PerentageCountriesInRegion=Freq*100/NumCountriesPerRegion) %>%
+  distinct(region_num, region, NumCountriesNA,NumCountriesPerRegion, PerentageCountriesInRegion)
+count_na_by_region
+```
+
+The data table above displays the percentage of countries in each region that are missing values for the percentage of children sleeping under insecticide treated bed nets.  The average value for the percentage of children sleeping under insecticide treated bed nets in each region is calculated.
+
+
+```{r avg_bed_nets, echo=FALSE}
+bed_nets_region_avg <- fertility
+bed_nets_region_avg <- bed_nets_region_avg %>%
+  filter((percent_children_malaria_nets>=0)) %>%
+  select(region_num,region,percent_children_malaria_nets) %>%
+  group_by(region_num) %>%
+  mutate(AvgBedNetsInRegion=mean(percent_children_malaria_nets)) %>%
+  distinct(region_num, region, AvgBedNetsInRegion)
+bed_nets_region_avg
+```
+
+We will assume that countries that have missing data for the percentage of children sleeping under insecticide treated nets, have a percentage of zero and we will impute zero for the missing values.
+
+```{r impute_zero_nets, echo=FALSE}
+fertility$percent_children_malaria_nets[is.na(fertility$percent_children_malaria_nets)] <- 0
+```
+
+####Exploring Carbon Dioxide Emissions
+```{r co2, echo=FALSE}
+plot(fertility$carbon_dioxide_emissions, ylab="Carbon Dioxide Emissions")
+hist(fertility$carbon_dioxide_emissions, xlab="Carbon Dioxide Emissions",main="Histogram of Carbon Dioxide Emissions")
+boxplot(fertility$carbon_dioxide_emissions, main="Carbon Dioxide Emissions")
+filter(fertility, carbon_dioxide_emissions>4000000)
+```
+
+There are 172 missing values for carbon dioxide emissions.  Of the data that is present, most is between 0 and 1,000,000 kilotonnes.  The United States is an outlier with a very high emission value.  This value does not take into account the size of the country or population.  Imputing values presents a significant challenge for this reason as well as the variation between countries' emissions that depends on their development and commitment to environmental action. To address this, values reported by the Guardian in 2011 wil be used to supplement the data.  The data can be found here:
+https://www.theguardian.com/news/datablog/2011/jan/31/world-carbon-dioxide-emissions-country-data-co2
+
+```{r guardianCO2, echo=FALSE, message=FALSE,warning=FALSE}
+guardianCO2 <- read.csv("https://raw.githubusercontent.com/swigodsky/Data621/master/co2emissions.csv", stringsAsFactors = FALSE)
+fertility <- fertility %>%
+  left_join(guardianCO2, by ="name")
+fertility$carbon_dioxide_emissions[is.na(fertility$carbon_dioxide_emissions)] <- fertility$co2Guardian
+fertility <- subset(fertility, select=-c(emissions,co2Guardian))
+#summary(fertility$carbon_dioxide_emissions)
+```
+
+```{r co22, echo=FALSE}
+plot(fertility$carbon_dioxide_emissions, ylab="Carbon Dioxide Emissions")
+hist(fertility$carbon_dioxide_emissions, xlab="Carbon Dioxide Emissions",main="Histogram of Carbon Dioxide Emissions")
+boxplot(fertility$carbon_dioxide_emissions, main="Carbon Dioxide Emissions")
+```
+
+Now there are only 18 missing values for CO2 emissions.  Because of the extent to which outliers will increase the mean, the median will be imputed for missing values of CO2 emissions.
+
+```{r medco2,echo=FALSE}
+medianCO2 <- median(fertility$carbon_dioxide_emissions,na.rm=TRUE)
+fertility$carbon_dioxide_emissions[is.na(fertility$carbon_dioxide_emissions)] <- medianCO2
+```
+
+####Exploring Cell Subscriptions per 100 Population
+```{r cellSubs, echo=FALSE,message=FALSE,warning=FALSE}
+plot(fertility$cell_subs_per_100, ylab="Cell Subscriptions per 100 Population")
+hist(fertility$cell_subs_per_100, xlab="Cell Subscriptions per 100 Population",main="Histogram of Cell Subscriptions per 100 Population")
+boxplot(fertility$cell_subs_per_100, main="Cell Subscriptions per 100 Population")
+ggplot(fertility, aes(x=region,y=cell_subs_per_100)) + geom_boxplot(aes(color=region)) + theme(axis.text.x = element_text(angle=90))
+```
+ 
+The median and mean of cell subscriptions per 100 population are about the same.  However when exploring the variation by region, there are more noticable differences.  There are few outliers.  The region's median will be imputed for the 18 missing values.
+
+```{r medcell,echo=FALSE, message=FALSE,warning=FALSE}
+fertility <- fertility %>%
+  group_by(region) %>%
+  mutate(med_cell=median(cell_subs_per_100,na.rm=TRUE))
+fertility$cell_subs_per_100[is.na(fertility$cell_subs_per_100)] <- fertility$med_cell
+fertility = subset(fertility, select=-c(med_cell))
+```
+
+####Exploring Employment to Population Ratio
+```{r emplypop, echo=FALSE, message=FALSE, warning=FALSE}
+plot(fertility$employment_to_pop_ratio, ylab="Employment to Population Ratio")
+hist(fertility$employment_to_pop_ratio, xlab="Employment to Population Ratio",main="Histogram of Employment to Population Ratio")
+boxplot(fertility$employment_to_pop_ratio, main="Employment to Population Ratio")
+ggplot(fertility, aes(x=region,y=employment_to_pop_ratio)) + geom_boxplot(aes(color=region)) + theme(axis.text.x = element_text(angle=90))
+```
+ 
+The employment to population value varies dramatically by region.  The median for the employment to population ratio per region will be imputed for the missing values.  There are no values for middle Africa so the median from eastern Africa will be imputed for countries in middle Africa.
+
+```{r medemploy,echo=FALSE, message=FALSE,warning=FALSE}
+fertility <- fertility %>%
+  group_by(region) %>%
+  mutate(med_employ=median(employment_to_pop_ratio,na.rm=TRUE))
+fertility$employment_to_pop_ratio[is.na(fertility$employment_to_pop_ratio)] <- fertility$med_employ
+east_afr <- filter(fertility, region=="eastern_africa")
+fertility$employment_to_pop_ratio[is.na(fertility$employment_to_pop_ratio)] <- east_afr$med_employ
+fertility = subset(fertility, select=-c(med_employ))
+``` 
+
+####Exploring Female Employment to Population Ratio
+```{r fememplypop, echo=FALSE, message=FALSE, warning=FALSE}
+plot(fertility$female_employment_to_pop_ratio, ylab="Female Employment to Population Ratio")
+hist(fertility$female_employment_to_pop_ratio, xlab="Female Employment to Population Ratio",main="Histogram of Female Employment to Population Ratio")
+boxplot(fertility$female_employment_to_pop_ratio, main="Female Employment to Population Ratio")
+ggplot(fertility, aes(x=region,y=female_employment_to_pop_ratio)) + geom_boxplot(aes(color=region)) + theme(axis.text.x = element_text(angle=90))
+```
+ 
+There are 111 missing values.  The female employment to population value varies dramatically by region.  The median value by region will be imputed for the missing values of female employment to population ratio.  There are no values for middle Africa so the median from eastern Africa will be imputed for middle Africa.
+
+```{r medfem_employ,echo=FALSE, message=FALSE,warning=FALSE}
+fertility <- fertility %>%
+  group_by(region) %>%
+  mutate(med_fem_employ=median(female_employment_to_pop_ratio,na.rm=TRUE))
+fertility$female_employment_to_pop_ratio[is.na(fertility$female_employment_to_pop_ratio)] <- fertility$med_fem_employ
+east_afr <- filter(fertility, region=="eastern_africa")
+fertility$female_employment_to_pop_ratio[is.na(fertility$female_employment_to_pop_ratio)] <- east_afr$med_fem_employ
+fertility = subset(fertility, select=-c(med_fem_employ))
+```  
+ 
+####Exploring Lowest Quintile Income Share
+```{r lowquint, echo=FALSE, message=FALSE, warning=FALSE}
+plot(fertility$lowest_quint_income_share.csv, ylab="Poorest Quintile's Share in Income")
+hist(fertility$lowest_quint_income_share.csv, xlab="Poorest Quintile's Share in Income",main="Histogram of Poorest Quintile's Share in Income")
+boxplot(fertility$lowest_quint_income_share.csv, main="Poorest Quintile's Share in Income")
+ggplot(fertility, aes(x=region,y=lowest_quint_income_share.csv)) + geom_boxplot(aes(color=region)) + theme(axis.text.x = element_text(angle=90))
+```
+ 
+There are 190 missing values.  There are so many missing values that there is not a meaningful way to impute missing values.  This variable will therefore be removed.
+
+```{r remove_lowest_quint,echo=FALSE, message=FALSE,warning=FALSE}
+fertility = subset(fertility, select=-c(lowest_quint_income_share.csv))
+```  
+ 
+####Exploring Maternal Mortality
+
+There are 139 missing values.  To address this large number of missing values,data will be taken from UNICEF at the following website https://data.unicef.org/topic/maternal-health/maternal-mortality/ and the values posted there for 2015 will be used for the missing values.
+
+
+```{r mat_mortUNICEF, echo=FALSE, message=FALSE,warning=FALSE}
+mat_mortUNICEF <- read.csv("https://raw.githubusercontent.com/swigodsky/Data621/master/maternal_mortality2015.csv", stringsAsFactors = FALSE)
+fertility <- fertility %>%
+  left_join(mat_mortUNICEF, by ="country_code")
+fertility$maternal_mortality[is.na(fertility$maternal_mortality)] <- fertility$maternal_mortalityUNICEF
+fertility <- subset(fertility, select=-c(maternal_mortalityUNICEF))
+summary(fertility$maternal_mortality)
+```
+
+```{r matmorth, echo=FALSE, message=FALSE, warning=FALSE}
+plot(fertility$maternal_mortality, ylab="Maternal Mortality")
+hist(fertility$maternal_mortality, xlab="Maternal Mortality",main="Histogram of Maternal Mortality")
+boxplot(fertility$maternal_mortality, main="Maternal Mortality")
+ggplot(fertility, aes(x=region,y=maternal_mortality)) + geom_boxplot(aes(color=region)) + theme(axis.text.x = element_text(angle=90))
+summary(fertility$maternal_mortality)
+```
+
+With the added data, now there are only 21 missing values for maternal mortality.  The data is skewed to the right, with the presence of outliers above a value of 500. There is a relationship between region and maternal mortality so the missing values will be imputed with the median maternal mortality for the region the country is in. 
+
+```{r mat_mort_impute,echo=FALSE, message=FALSE,warning=FALSE}
+fertility <- fertility %>%
+  group_by(region) %>%
+  mutate(med_mother_mort=median(maternal_mortality,na.rm=TRUE))
+fertility$maternal_mortality[is.na(fertility$maternal_mortality)] <- fertility$med_mother_mort
+fertility = subset(fertility, select=-c(med_mother_mort))
+``` 
+ 
+####Exploring Unmet Family Planning Need
+```{r unmet_fam_plan, echo=FALSE, message=FALSE, warning=FALSE}
+plot(fertility$unmet_family_planning_need, ylab="Percent Unmet Family Planning Need")
+hist(fertility$unmet_family_planning_need, xlab="Percent Unmet Family Planning Need",main="Histogram of Unmet Family Planning Need")
+boxplot(fertility$unmet_family_planning_need, main="Percent Unmet Family Planning Need")
+ggplot(fertility, aes(x=region,y=unmet_family_planning_need)) + geom_boxplot(aes(color=region)) + theme(axis.text.x = element_text(angle=90))
+``` 
+
+There are 78 missing values.  There are differences in median according to region.  The median of the region will beimputed for the missing values.
+
+```{r unmet_fam_impute,echo=FALSE, message=FALSE,warning=FALSE}
+fertility <- fertility %>%
+  group_by(region) %>%
+  mutate(med_unmet_fam=median(unmet_family_planning_need,na.rm=TRUE))
+fertility$unmet_family_planning_need[is.na(fertility$unmet_family_planning_need)] <- fertility$med_unmet_fam
+fertility = subset(fertility, select=-c(med_unmet_fam))
+``` 
+
+####Exploring Percentage of Urban Population Living In Slums
+```{r slums, echo=FALSE, message=FALSE, warning=FALSE}
+plot(fertility$urban_pop_in_slums, ylab="Percentage of Urban Population Living In Slums")
+hist(fertility$urban_pop_in_slums, xlab="Percentage of Urban Population Living In Slums",main="Histogram of Percentage of Urban Population Living In Slums")
+boxplot(fertility$urban_pop_in_slums, main="Percentage of Urban Population Living In Slums")
+ggplot(fertility, aes(x=region,y=urban_pop_in_slums)) + geom_boxplot(aes(color=region)) + theme(axis.text.x = element_text(angle=90))
+``` 
+
+There are 133 missing values.  There are differences in median according to region but some regions are missing values entirely.  The median of the region wil be imputed for the missing values and if there are no values for a region, zero will be imputed for the missing values.
+
+```{r slum_impute,echo=FALSE, message=FALSE,warning=FALSE}
+fertility <- fertility %>%
+  group_by(region) %>%
+  mutate(med_slums=median(urban_pop_in_slums,na.rm=TRUE))
+fertility$urban_pop_in_slums[is.na(fertility$urban_pop_in_slums)] <- fertility$med_slums
+fertility = subset(fertility, select=-c(med_slums))
+fertility$urban_pop_in_slums[is.na(fertility$urban_pop_in_slums)] <- 0
+``` 
+
+####Exploring The Literacy Ratio of Women to Men
+
+There are 146 missing values.  To address this large number of missing values, data will be taken from the following website https://www.nationmaster.com/country-info/stats/Education/Women-to-men-parity-index/As-ratio-of-literacy-rates/Aged-15--24#amount and used for the missing values.
+
+
+```{r lit, echo=FALSE, message=FALSE,warning=FALSE}
+literacy <- read.csv("https://raw.githubusercontent.com/swigodsky/Data621/master/women_men_literacy.csv", stringsAsFactors = FALSE)
+fertility <- fertility %>%
+  left_join(literacy, by ="name")
+fertility$women_men_literacy_ratio[is.na(fertility$women_men_literacy_ratio)] <- fertility$women_men_literacy_ratioNEW
+fertility <- subset(fertility, select=-c(women_men_literacy_ratioNEW))
+summary(fertility$women_men_literacy_ratio)
+```
+
+Now there are only 51 missing values.
+
+```{r litplots, echo=FALSE, message=FALSE, warning=FALSE}
+plot(fertility$women_men_literacy_ratio, ylab="Literacy Ratio of Women to Men")
+hist(fertility$women_men_literacy_ratio, xlab="Literacy Ratio of Women to Men",main="Histogram of Literacy Ratio of Women to Men")
+boxplot(fertility$women_men_literacy_ratio, main="Literacy Ratio of Women to Men")
+ggplot(fertility, aes(x=region,y=women_men_literacy_ratio)) + geom_boxplot(aes(color=region)) + theme(axis.text.x = element_text(angle=90))
+summary(fertility$women_men_literacy_ratio)
+```
+
+The median for most regions is close to 1, which means that literacy rate for women is equal to the literacy rate for men. The third quartile for most regions is close to the median of 1.  There are some variations be region.  The median of the region will be imputed for the missing values.
+ 
+
+```{r litrate_impute,echo=FALSE, message=FALSE,warning=FALSE}
+fertility <- fertility %>%
+  group_by(region) %>%
+  mutate(med_lit=median(women_men_literacy_ratio,na.rm=TRUE))
+fertility$women_men_literacy_ratio[is.na(fertility$women_men_literacy_ratio)] <- fertility$med_lit
+fertility = subset(fertility, select=-c(med_lit))
+summary(fertility)
+head(fertility)
+``` 
+
+####Exploring Net Migration Per 1000
+```{r migration, echo=FALSE, message=FALSE, warning=FALSE}
+plot(fertility$net_migration_per_1000, ylab="Net Migration Per 1000")
+hist(fertility$net_migration_per_1000, xlab="Net Migration Per 1000",main="Histogram of Net Migration Per 1000")
+boxplot(fertility$net_migration_per_1000, main="Percentage of Net Migration Per 1000")
+ggplot(fertility, aes(x=region,y=net_migration_per_1000)) + geom_boxplot(aes(color=region)) + theme(axis.text.x = element_text(angle=90))
+``` 
+
+There are 20 missing values. The war in Syria is part of what accounts for striking difference in migration between the middle east and other parts of the world.  The median of the region will be imputed for missing values.
+
+```{r migr_impute,echo=FALSE, message=FALSE,warning=FALSE}
+fertility <- fertility %>%
+  group_by(region) %>%
+  mutate(med_mig=median(net_migration_per_1000,na.rm=TRUE))
+fertility$net_migration_per_1000[is.na(fertility$net_migration_per_1000)] <- fertility$med_mig
+fertility = subset(fertility, select=-c(med_mig))
+``` 
+
+```{r correlation, echo=FALSE, fig.width=10, message=FALSE}
+fertility_variables <- fertility
+fertility_variables <- subset(fertility_variables, select=-c(region,name,region_num,country_code))
+correlation <- cor(fertility_variables, method = "pearson",use="complete.obs")
+corrplot(correlation, type="upper", method="color")
+```
+
+Fertility rate is negatively correlated with cell subscriptions per 100 population and high ratios of literacy rates of women to men.
+
+Fertility rate is positively correlated with the percent of children sleeping under insecticide treated nets, unmet family planning need and the percent of urban population living in slums.  
+
+Having a high fertility rate may lead to a high unmet family planning need.
+
+The female employment to population ratio is positively correlated with the employment to population ratio.
+
+Cellular subscriptions per 100 in the population is negatively correlated with the percent of children sleeping under insecticide treated bed nets and the percentage of the urban population living in slums.
+
+
+##Build Models
+####Creating a Test Set and Training Set
+```{r model1_training_testing, echo=FALSE, cache=TRUE}
+set.seed(15)
+n <- nrow(fertility_variables)
+shuffle_df1 <- fertility_variables[sample(n),]
+train_indeces <- 1:round(0.6*n)
+train1 <- shuffle_df1[train_indeces,]
+test_indeces <- (round(.6*n)+1):n
+test1 <- shuffle_df1[test_indeces,]
+```
+
+
+####Backward Elimination - Linear Regression Model - Model 1
+A linear regression model will be built using the backward elimination model.  Initially all of the variables will be present, and then they will be removed one at a time.  The variable with the highest p value, which has the least effect on fertility rate, will be eliminated first.  Variables will be removed until every predictor has a p value below 0.05.
+
+```{r backward-elimination1, echo=FALSE}
+fert_lm <- lm(fertility_rate_children_per_woman ~ ., data=train1)
+#summary(fert_lm)
+```
+
+Female employment to population ratio has the (highest p value) lowest effect on fertility rate and will be removed first. 
+```{r remove_femEmplPop, echo=FALSE}
+fert_lm <- update(fert_lm, .~. -female_employment_to_pop_ratio, data = train1)
+#summary(fert_lm)
+```
+
+
+Employment to population ratio has the (highest p value) lowest effect on fertility rate and will be removed next.  
+```{r remove_employToPop, echo=FALSE}
+fert_lm <- update(fert_lm, .~. -employment_to_pop_ratio, data = train1)
+#summary(fert_lm)
+```
+
+
+Maternal mortality has the (highest p value) lowest effect on fertility rate and will be removed next.  
+```{r remove_maternal_mortality, echo=FALSE}
+fert_lm <- update(fert_lm, .~. -maternal_mortality, data = train1)
+#summary(fert_lm)
+```
+
+
+Carbon dioxide emissions has the (highest p value) lowest effect on fertility rate and will be removed next.  
+```{r remove_CO2, echo=FALSE}
+fert_lm <- update(fert_lm, .~. -carbon_dioxide_emissions, data = train1)
+#summary(fert_lm)
+```
+
+Net migration per 100 has the (highest p value) lowest effect on fertility rate and will be removed next.  
+```{r remove_migr, echo=FALSE}
+fert_lm <- update(fert_lm, .~. -net_migration_per_1000, data = train1)
+#summary(fert_lm)
+```
+
+
+Urban population in slums has the (highest p value) lowest effect on fertility rate and will be removed next.  
+```{r remove_slums, echo=FALSE}
+fert_lm <- update(fert_lm, .~. -urban_pop_in_slums, data = train1)
+summary(fert_lm)
+```
+
+Fertility rate = 0.039percent_children_malaria_nets + 0.026unmet_family_planning_need - 0.008cell_subs_per_100 - 1.55women_men_literacy_ratio + 4.3
+
+Countries with a higher percentage of children sleeping under insecticide treated nets have higher fertility rates.
+Countries with higher levels of unmet family planning need have higher fertility rates.
+Countries with higher levels of cellular subscriptions have lower fertility rates.
+Countries with a higher ratio of women's literacy to men's literacy have lower fertility rates.
+
+The R squared value is 0.5688.  56.88% of the variation in fertility rate is accounted for by this model.
+
+```{r res1, echo=FALSE}
+qqnorm(resid(fert_lm))
+qqline(resid(fert_lm))
+```
+
+The residuals at the lower end are not nearly normal.  However much of the residuals do follow a normal distribution.
+
+
+####Prediction from Model 1
+The root mean square error from model 1 is
+```{r rmse1, echo=FALSE}
+pred1 <- predict(fert_lm, newdata=test1, type="response")
+error <- pred1-test1$fertility_rate_children_per_woman
+rmse1 <- sqrt(mean(error^2))
+rmse1
+```
+
+On average, the predicion for the fertility rate, is off by 1.15.
+
+####Muliticolinearity Test
+```{r multi_collinearity, echo=FALSE}
+vif(fert_lm)
+```
+
+Since each of the variance inflation factor values are below 5, there is not an issue with multicollinearity.
+
+####Cook's Distance
+```{r cooksdist, echo=FALSE ,warning=FALSE, message=FALSE}
+ggplot()+geom_point(aes(x=seq_along(cooks.distance(fert_lm)),y=cooks.distance(fert_lm)),color='blue',shape=20,size=2)+ theme(panel.background = element_rect(fill = '#d3dded'))+labs(x='Linear Regression Model',y="Cook's Distance")+ylim(0,.004)
+```
+
+The values of Cook's distance are very low.  This indicates that there is not an issue with outliers.
+
+####Model 2 Principal Component Analysis
+The code to create the PCA models was taken from:
+http://www.gastonsanchez.com/visually-enforced/how-to/2012/06/17/PCA-in-R/
+and
+https://www.analyticsvidhya.com/blog/2016/03/practical-guide-principal-component-analysis-python/
+
+```{r pca, echo=FALSE, message=FALSE,warning=FALSE}
+prin_comp <- prcomp(train1, scale. = T)
+train.data <- data.frame(fert = train1$fertility_rate_children_per_woman, prin_comp$x)
+#decision tree
+fert_rpart <- rpart(fert ~ .,data = train.data, method = "anova")
+#fert_rpart
+test.data <- predict(prin_comp, newdata = test1)
+test.data <- as.data.frame(test.data)
+#make prediction on test data
+pred2 <- predict(fert_rpart, test.data)
+error <- pred2-test1$fertility_rate_children_per_woman
+rmse2 <- sqrt(mean(error^2))
+rmse2
+```
+
+The root mean square error is 0.83.  On average, a prediction of the fertility rate is off by 0.83.
+
+####Scree Plot
+
+```{r screeplot2, echo=FALSE}
+std_dev <- prin_comp$sdev
+pr_var <- std_dev^2
+prop_varex <- pr_var/sum(pr_var)
+plot(prop_varex, xlab = "Principal Component",
+             ylab = "Proportion of Variance Explained",
+             type = "b")
+```
+
+About 99% of the variance is accounted for using 11 principal components.
+
+
+```{r circle_plot, echo=FALSE}
+circle <- function(center = c(0, 0), npoints = 100) {
+    r = 1
+    tt = seq(0, 2 * pi, length = npoints)
+    xx = center[1] + r * cos(tt)
+    yy = center[1] + r * sin(tt)
+    return(data.frame(x = xx, y = yy))
+}
+corcir = circle(c(0, 0), npoints = 100)
+# create data frame with correlations between variables and PCs
+correlations = as.data.frame(cor(train1, prin_comp$x))
+# data frame with arrows coordinates
+arrows = data.frame(x1 = c(0,0,0,0,0,0,0,0,0,0,0), y1 = c(0,0,0,0,0,0,0,0,0,0,0), x2 = correlations$PC1, 
+    y2 = correlations$PC2)
+# geom_path will do open circles
+ggplot() + geom_path(data = corcir, aes(x = x, y = y), colour = "gray65") + 
+    geom_segment(data = arrows, aes(x = x1, y = y1, xend = x2, yend = y2), colour = "gray65") + 
+    geom_text(data = correlations, aes(x = PC1, y = PC2, label = rownames(correlations))) + 
+    geom_hline(yintercept = 0, colour = "gray65") + geom_vline(xintercept = 0, 
+    colour = "gray65") + xlim(-1.1, 1.1) + ylim(-1.1, 1.1) + labs(x = "pc1 aixs", y = "pc2 axis") + ggtitle("PCA - Model 2 - Circle of correlations")
+```
+ 
+
+####Model 3 Principal Component Analysis
+It is hard to distinguish the variables in the graph above.  The next model will be built only based on the variables the correlation plot indicated as being correlated to fertility rate.
+```{r model3, echo=FALSE}
+fertility3 <- fertility
+fertility3 <- subset(fertility3, select=c(fertility_rate_children_per_woman,urban_pop_in_slums, unmet_family_planning_need, percent_children_malaria_nets, women_men_literacy_ratio, cell_subs_per_100))
+```
+
+####Creating a Test Set and Training Set
+```{r model3_training_testing, echo=FALSE, cache=TRUE}
+set.seed(25)
+n <- nrow(fertility_variables)
+shuffle_df3 <- fertility3[sample(n),]
+train_indeces <- 1:round(0.6*n)
+train3 <- shuffle_df3[train_indeces,]
+test_indeces <- (round(.6*n)+1):n
+test3 <- shuffle_df3[test_indeces,]
+```
+
+```{r pca3, echo=FALSE, message=FALSE,warning=FALSE}
+prin_comp3 <- prcomp(train3, scale. = T)
+train.data3 <- data.frame(fert3 = train3$fertility_rate_children_per_woman, prin_comp3$x)
+#decision tree
+fert_rpart3 <- rpart(fert3 ~ .,data = train.data3, method = "anova")
+#fert_rpart
+test.data3 <- predict(prin_comp3, newdata = test3)
+test.data3 <- as.data.frame(test.data3)
+#make prediction on test data
+pred3 <- predict(fert_rpart3, test.data3)
+error <- pred3-test3$fertility_rate_children_per_woman
+rmse3 <- sqrt(mean(error^2))
+rmse3
+```
+
+The root mean square error is 0.70.  On average, a prediction of the fertility rate is off by 0.70.
+
+####Scree Plot
+
+```{r screeplot3, echo=FALSE}
+std_dev3 <- prin_comp3$sdev
+pr_var3 <- std_dev3^2
+prop_varex3 <- pr_var3/sum(pr_var3)
+plot(prop_varex3, xlab = "Principal Component",
+             ylab = "Proportion of Variance Explained",
+             type = "b")
+```
+
+About 98% of the variance in the data set is accounted for using 6 principal components.  The scree plot becomes close to horizontal after the second principal component. About 86% of the variance is accounted for by the first 2 principal components.
+
+
+```{r circleplot, echo=FALSE}
+circle <- function(center = c(0, 0), npoints = 100) {
+    r = 1
+    tt = seq(0, 2 * pi, length = npoints)
+    xx = center[1] + r * cos(tt)
+    yy = center[1] + r * sin(tt)
+    return(data.frame(x = xx, y = yy))
+}
+corcir = circle(c(0, 0), npoints = 100)
+#train3 <- subset(train3, select=-c(fertility_rate_children_per_woman))
+# create data frame with correlations between variables and PCs
+correlations3 = as.data.frame(cor(train3, prin_comp3$x))
+# data frame with arrows coordinates
+arrows = data.frame(x1 = c(0,0,0,0,0,0), y1 = c(0,0,0,0,0,0), x2 = correlations3$PC1, 
+    y2 = correlations3$PC2)
+# geom_path will do open circles
+ggplot() + geom_path(data = corcir, aes(x = x, y = y), colour = "gray65") + 
+    geom_segment(data = arrows, aes(x = x1, y = y1, xend = x2, yend = y2), colour = "gray65") + 
+    geom_text(data = correlations3, aes(x = PC1, y = PC2, label = rownames(correlations3))) + 
+    geom_hline(yintercept = 0, colour = "gray65") + geom_vline(xintercept = 0, 
+    colour = "gray65") + xlim(-1.1, 1.1) + ylim(-1.1, 1.1) + labs(x = "pc1 aixs", y = "pc2 axis") + ggtitle("PCA - Model 3 - Circle of correlations")
+```
+
+The correlation plot above displays the variables urban population in slums, the percent of children sleeping under insecticide treated nets, unmet family planning need and fertility rate having positive effects on principal component 1. The ratio of the rate of women's literacy to men's literacy and the number of cellular subscriptions have a negative effect on principal component 1.  The ratio of the rate of women's literacy to men's literacy has a strong positive effect on principal component 2 and cellular subscriptions has a negative effect on principal component 2.
+
+```{r princ_comp3_rotation, echo=FALSE}
+prin_comp3$rotation
+```
+
+The first principal component has a large positive correlation between fertility rate, the percent of children sleeping under insecticide treated nets, urban population in slums and unmet family planning need.  The first principal component has a negative correlation with the number of cellular subscriptions.  The first principal component therefore can b e considred as a measurement of the extent of a country's poverty level.  The greater the poverty level, the higher the fertility rate.  The second principal component has a large positive association with the ratio of the literacy rate between women and men, and a negative association with cellular subscriptions.  This component is more difficult to categorize.  Since it is so highly correlated to literacy ratio, perhaps this component is a measure of women's education. There is a negative correlation between fertility rate and the literacy ratio between women and men. 
+
+####Model 4 Regression Subset Selection
+```{r message=FALSE,warning=FALSE, echo=FALSE}
+# code reference https://rstudio-pubs-static.s3.amazonaws.com/2897_9220b21cfc0c43a396ff9abf122bb351.html
+if (!require('leaps')) (install.packages('leaps'))
+library(leaps)
+```
+
+```{r message=FALSE,warning=FALSE}
+regsubsets.out <-
+    regsubsets(fertility_rate_children_per_woman ~ .,
+               data = train1,
+               nbest = 1,       # 1 best model for each number of predictors
+               nvmax = NULL,    # NULL for no limit on number of variables
+               force.in = NULL, force.out = NULL,
+               method = "exhaustive")
+summary.out <- summary(regsubsets.out)
+```
+
+Number of variables with highest adjusted \( R^2 \).   Variables marked with TRUE are the ones that will be chosen.
+```{r message=FALSE,warning=FALSE}
+which.max(summary.out$adjr2)
+summary.out$which[5,]
+summary(best.model <- lm(fertility_rate_children_per_woman ~ 
+                   cell_subs_per_100 + 
+                   percent_children_malaria_nets + 
+                   urban_pop_in_slums + 
+                   unmet_family_planning_need + 
+                   women_men_literacy_ratio, data = train1))
+```
+
+####Prediction from Model 4
+```{r rmse4, message=FALSE,warning=FALSE}
+pred.model4 <- predict(best.model, newdata=test1, type="response")
+error.model4 <- pred.model4-test1$fertility_rate_children_per_woman
+rmse.model4 <- sqrt(mean(error.model4^2))
+rmse.model4
+```
+
+__On average, the prediction for the fertility rate is off by 1.14.__
+
+####Model 5 Count Models
+Interpreting the fertility rate as the number of children a woman would have (a whole number), the dependent variable would be transformed to be able to try out the 3 count models (Poisson, Negative Binomial, Zero Inflated)
+```{r message=FALSE,warning=FALSE, echo=FALSE}
+if (!require('pscl')) (install.packages('pscl'))
+if (!require('MASS')) (install.packages('MASS'))
+library(MASS)
+library(pscl)
+# copy datasets
+count.train1 <- train1
+count.test1 <- test1
+# take min rate and make it an integer
+int.min.train1 <- (min(count.train1$fertility_rate_children_per_woman) * 1000)
+int.min.test1 <- (min(count.test1$fertility_rate_children_per_woman) * 1000)
+# transform the rate, so min value is 0
+count.train1$fertility_rate_children_per_woman <- 
+  (count.train1$fertility_rate_children_per_woman * 1000) - int.min.train1
+count.test1$fertility_rate_children_per_woman <- 
+  (count.test1$fertility_rate_children_per_woman * 1000) - int.min.test1
+```
+####Create Count Models
+```{r message=FALSE,warning=FALSE, echo=FALSE}
+# Poisson model
+summary(poisson.model <- glm(fertility_rate_children_per_woman ~ ., 
+                          data=count.train1, family="poisson"), trace = FALSE)
+# Negative Binomial Model
+summary(nb.model <- step(glm.nb(fertility_rate_children_per_woman ~ . , 
+                            data = count.train1), trace = FALSE))
+# Zero-inflated Model
+summary(zeroinf.model <- zeroinfl(fertility_rate_children_per_woman ~ . 
+                          |percent_children_malaria_nets, 
+                          data = count.train1))
+```
+####Prediction from Count Models
+
+```{r message=FALSE,warning=FALSE, echo=FALSE}
+# Poisson prediction
+pred.model5 <- ((predict(poisson.model, newdata=count.test1, type="response") +
+                    + int.min.test1) / 1000)
+error.model5 <- ((pred.model5 + int.min.test1) / 1000)
+                    - test1$fertility_rate_children_per_woman
+rmse.model5 <- sqrt(mean(error.model5^2))
+# Negative Binomial prediction
+pred.model6 <- ((predict(nb.model, newdata=count.test1, type="response") +
+                    + int.min.test1) / 1000)
+error.model6 <- ((pred.model6 + int.min.test1) / 1000)
+                    - test1$fertility_rate_children_per_woman
+rmse.model6 <- sqrt(mean(error.model6^2))
+# Zero Inflated prediction
+pred.model7 <- ((predict(zeroinf.model, newdata=count.test1, type="response") +
+                    + int.min.test1) / 1000)
+error.model7 <- ((pred.model7 + int.min.test1) / 1000)
+                    - test1$fertility_rate_children_per_woman
+rmse.model7 <- sqrt(mean(error.model7^2))
+# putting them together
+count.models <- c("Poisson", "Negative Binomial", "Zero Inflated")
+count.rmse <- c(rmse.model5, rmse.model6, rmse.model7)
+count.prediction.results <- as.data.frame(cbind(count.models,count.rmse))
+count.prediction.results
+```
+__On average, the prediction for the fertility rate is off by 1.21.__
+
+##Discussion and Conclusion
+
+It is possible to predict the fertility rate in a country based on the percent of children sleeping under insecticide treated bed nets, the percentage of the urban population in slums, unmet family planning need, the number of cellular subscriptions and the ratio of the literacy rate between women and men.  We created 7 different models and all gave relatively similar results.  The model with the lowest root mean square error was model 3, which employed principal component analysis.  In conclusion, higher fertility rates are associated with having more children sleeping under insecticide treated bed nets, higher percentages of the urban population living in slums and higher unmet family planning need.  From our analysis, it is not possible to ascertain whether a high fertility rate is the effect of these variables, the cause of these variables or simply correlated with them.  For example, does having a large number of children sleeping under insecticide treated nets correlate with a higher fertility rate or a consequence of a high fertility rate?  A high literacy rate among women compared with men as well as a large number of cellular subscriptions is associated with countries that have lower fertility rates.  A source of further research would involve uncovering the nature of these connections to identify causation for fertility rates, not just correlations.  In closing, high fertility rates are associated with higher poverty levels and lower levels of education between women and men.
+
+
+
+## References
+
+[1] United Nations, Department of Economic and Social Affairs. World Population Prospects, The 2017 Revision. Retrieved from https://esa.un.org/unpd/wpp/Publications/Files/WPP2017_Methodology.pdf.
+
+[2] Alkema et al (2011). Probabilistic Projections of the Total Fertility Rate for All Countries. Retrieved from https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3367999/.
+
+[3] National Institute of Health (2011). NIH-funded study proposes new method to predict fertility rates. Retrieved from https://www.nih.gov/news-events/news-releases/nih-funded-study-proposes-new-method-predict-fertility-rates.
+
+[4] United Nations, Department of Economic and Social Affairs. Population Trends. Retrieved from http://www.un.org/en/development/desa/population/theme/trends/index.shtml
+
+[5] Walter Oberhofer and Thomas Reichsthaler (2004). Modelling Fertility: A Semi-Parametric Approach. Retrived from https://epub.uni-regensburg.de/4511/1/rdisb396.pdf
+
+##Appendix
+
+library(tidyr)
+library(dplyr)
+library(corrplot)
+library(ggplot2)
+library(car)
+library(rpart)
+
+fertility <- read.csv("https://raw.githubusercontent.com/swigodsky/Data621/master/fertility_rate_predictionUN.csv", stringsAsFactors = FALSE)
+country_code_df <- read.csv("https://raw.githubusercontent.com/swigodsky/Data621/master/country_codes.csv", stringsAsFactors = TRUE)
+country_code_df$region_num <- as.factor(country_code_df$region_num)
+fertility <- left_join(fertility,country_code_df,by="country_code")
+fertility <- subset(fertility, select=-c(order,country_number))
+
+head(fertility)
+nrow(fertility)
+
+summary(fertility)
+
+country_per_region <- fertility
+country_per_region <- country_per_region %>%
+  select(region_num,region)
+country_per_region <- as.data.frame(table(country_per_region$region_num))
+colnames(country_per_region) <- c("region_num","NumCountriesPerRegion")
+country_per_region
+
+bed_nets_region <- fertility
+bed_nets_region <- bed_nets_region %>%
+  filter(is.na(percent_children_malaria_nets)) %>%
+  select(region_num)
+
+count_na_by_region <- as.data.frame(table(bed_nets_region$region_num))
+colnames(count_na_by_region) <- c("region_num","Freq")
+count_na_by_region <- count_na_by_region %>%
+  left_join(country_code_df,by="region_num") %>%
+  left_join(country_per_region,by="region_num") %>%
+  select(region_num,region,Freq,NumCountriesPerRegion) %>%
+  mutate(NumCountriesNA=Freq) %>%
+  mutate(NumCountriesPerRegion=NumCountriesPerRegion) %>%
+  mutate(PerentageCountriesInRegion=Freq*100/NumCountriesPerRegion) %>%
+  distinct(region_num, region, NumCountriesNA,NumCountriesPerRegion, PerentageCountriesInRegion)
+count_na_by_region
+
+bed_nets_region_avg <- fertility
+bed_nets_region_avg <- bed_nets_region_avg %>%
+  filter((percent_children_malaria_nets>=0)) %>%
+  select(region_num,region,percent_children_malaria_nets) %>%
+  group_by(region_num) %>%
+  mutate(AvgBedNetsInRegion=mean(percent_children_malaria_nets)) %>%
+  distinct(region_num, region, AvgBedNetsInRegion)
+bed_nets_region_avg
+
+fertility$percent_children_malaria_nets[is.na(fertility$percent_children_malaria_nets)] <- 0
+
+plot(fertility$carbon_dioxide_emissions, ylab="Carbon Dioxide Emissions")
+hist(fertility$carbon_dioxide_emissions, xlab="Carbon Dioxide Emissions",main="Histogram of Carbon Dioxide Emissions")
+boxplot(fertility$carbon_dioxide_emissions, main="Carbon Dioxide Emissions")
+filter(fertility, carbon_dioxide_emissions>4000000)
+
+guardianCO2 <- read.csv("https://raw.githubusercontent.com/swigodsky/Data621/master/co2emissions.csv", stringsAsFactors = FALSE)
+fertility <- fertility %>%
+  left_join(guardianCO2, by ="name")
+fertility$carbon_dioxide_emissions[is.na(fertility$carbon_dioxide_emissions)] <- fertility$co2Guardian
+fertility <- subset(fertility, select=-c(emissions,co2Guardian))
+summary(fertility$carbon_dioxide_emissions)
+
+plot(fertility$carbon_dioxide_emissions, ylab="Carbon Dioxide Emissions")
+hist(fertility$carbon_dioxide_emissions, xlab="Carbon Dioxide Emissions",main="Histogram of Carbon Dioxide Emissions")
+boxplot(fertility$carbon_dioxide_emissions, main="Carbon Dioxide Emissions")
+
+medianCO2 <- median(fertility$carbon_dioxide_emissions,na.rm=TRUE)
+fertility$carbon_dioxide_emissions[is.na(fertility$carbon_dioxide_emissions)] <- medianCO2
+
+plot(fertility$cell_subs_per_100, ylab="Cell Subscriptions per 100 Population")
+hist(fertility$cell_subs_per_100, xlab="Cell Subscriptions per 100 Population",main="Histogram of Cell Subscriptions per 100 Population")
+boxplot(fertility$cell_subs_per_100, main="Cell Subscriptions per 100 Population")
+ggplot(fertility, aes(x=region,y=cell_subs_per_100)) + geom_boxplot(aes(color=region)) + theme(axis.text.x = element_text(angle=90))
+
+fertility <- fertility %>%
+  group_by(region) %>%
+  mutate(med_cell=median(cell_subs_per_100,na.rm=TRUE))
+fertility$cell_subs_per_100[is.na(fertility$cell_subs_per_100)] <- fertility$med_cell
+fertility = subset(fertility, select=-c(med_cell))
+
+plot(fertility$employment_to_pop_ratio, ylab="Employment to Population Ratio")
+hist(fertility$employment_to_pop_ratio, xlab="Employment to Population Ratio",main="Histogram of Employment to Population Ratio")
+boxplot(fertility$employment_to_pop_ratio, main="Employment to Population Ratio")
+ggplot(fertility, aes(x=region,y=employment_to_pop_ratio)) + geom_boxplot(aes(color=region)) + theme(axis.text.x = element_text(angle=90))
+
+fertility <- fertility %>%
+  group_by(region) %>%
+  mutate(med_employ=median(employment_to_pop_ratio,na.rm=TRUE))
+fertility$employment_to_pop_ratio[is.na(fertility$employment_to_pop_ratio)] <- fertility$med_employ
+east_afr <- filter(fertility, region=="eastern_africa")
+fertility$employment_to_pop_ratio[is.na(fertility$employment_to_pop_ratio)] <- east_afr$med_employ
+fertility = subset(fertility, select=-c(med_employ))
+
+plot(fertility$female_employment_to_pop_ratio, ylab="Female Employment to Population Ratio")
+hist(fertility$female_employment_to_pop_ratio, xlab="Female Employment to Population Ratio",main="Histogram of Female Employment to Population Ratio")
+boxplot(fertility$female_employment_to_pop_ratio, main="Female Employment to Population Ratio")
+ggplot(fertility, aes(x=region,y=female_employment_to_pop_ratio)) + geom_boxplot(aes(color=region)) + theme(axis.text.x = element_text(angle=90))
+
+fertility <- fertility %>%
+  group_by(region) %>%
+  mutate(med_fem_employ=median(female_employment_to_pop_ratio,na.rm=TRUE))
+fertility$female_employment_to_pop_ratio[is.na(fertility$female_employment_to_pop_ratio)] <- fertility$med_fem_employ
+east_afr <- filter(fertility, region=="eastern_africa")
+fertility$female_employment_to_pop_ratio[is.na(fertility$female_employment_to_pop_ratio)] <- east_afr$med_fem_employ
+fertility = subset(fertility, select=-c(med_fem_employ))
+
+plot(fertility$lowest_quint_income_share.csv, ylab="Poorest Quintile's Share in Income")
+hist(fertility$lowest_quint_income_share.csv, xlab="Poorest Quintile's Share in Income",main="Histogram of Poorest Quintile's Share in Income")
+boxplot(fertility$lowest_quint_income_share.csv, main="Poorest Quintile's Share in Income")
+ggplot(fertility, aes(x=region,y=lowest_quint_income_share.csv)) + geom_boxplot(aes(color=region)) + theme(axis.text.x = element_text(angle=90))
+
+fertility = subset(fertility, select=-c(lowest_quint_income_share.csv))
+
+mat_mortUNICEF <- read.csv("https://raw.githubusercontent.com/swigodsky/Data621/master/maternal_mortality2015.csv", stringsAsFactors = FALSE)
+fertility <- fertility %>%
+  left_join(mat_mortUNICEF, by ="country_code")
+fertility$maternal_mortality[is.na(fertility$maternal_mortality)] <- fertility$maternal_mortalityUNICEF
+fertility <- subset(fertility, select=-c(maternal_mortalityUNICEF))
+summary(fertility$maternal_mortality)
+
+plot(fertility$maternal_mortality, ylab="Maternal Mortality")
+hist(fertility$maternal_mortality, xlab="Maternal Mortality",main="Histogram of Maternal Mortality")
+boxplot(fertility$maternal_mortality, main="Maternal Mortality")
+ggplot(fertility, aes(x=region,y=maternal_mortality)) + geom_boxplot(aes(color=region)) + theme(axis.text.x = element_text(angle=90))
+summary(fertility$maternal_mortality)
+
+fertility <- fertility %>%
+  group_by(region) %>%
+  mutate(med_mother_mort=median(maternal_mortality,na.rm=TRUE))
+fertility$maternal_mortality[is.na(fertility$maternal_mortality)] <- fertility$med_mother_mort
+fertility = subset(fertility, select=-c(med_mother_mort))
+
+plot(fertility$unmet_family_planning_need, ylab="Percent Unmet Family Planning Need")
+hist(fertility$unmet_family_planning_need, xlab="Percent Unmet Family Planning Need",main="Histogram of Unmet Family Planning Need")
+boxplot(fertility$unmet_family_planning_need, main="Percent Unmet Family Planning Need")
+ggplot(fertility, aes(x=region,y=unmet_family_planning_need)) + geom_boxplot(aes(color=region)) + theme(axis.text.x = element_text(angle=90))
+
+fertility <- fertility %>%
+  group_by(region) %>%
+  mutate(med_unmet_fam=median(unmet_family_planning_need,na.rm=TRUE))
+fertility$unmet_family_planning_need[is.na(fertility$unmet_family_planning_need)] <- fertility$med_unmet_fam
+fertility = subset(fertility, select=-c(med_unmet_fam))
+
+plot(fertility$urban_pop_in_slums, ylab="Percentage of Urban Population Living In Slums")
+hist(fertility$urban_pop_in_slums, xlab="Percentage of Urban Population Living In Slums",main="Histogram of Percentage of Urban Population Living In Slums")
+boxplot(fertility$urban_pop_in_slums, main="Percentage of Urban Population Living In Slums")
+ggplot(fertility, aes(x=region,y=urban_pop_in_slums)) + geom_boxplot(aes(color=region)) + theme(axis.text.x = element_text(angle=90))
+
+fertility <- fertility %>%
+  group_by(region) %>%
+  mutate(med_slums=median(urban_pop_in_slums,na.rm=TRUE))
+fertility$urban_pop_in_slums[is.na(fertility$urban_pop_in_slums)] <- fertility$med_slums
+fertility = subset(fertility, select=-c(med_slums))
+fertility$urban_pop_in_slums[is.na(fertility$urban_pop_in_slums)] <- 0
+
+literacy <- read.csv("https://raw.githubusercontent.com/swigodsky/Data621/master/women_men_literacy.csv", stringsAsFactors = FALSE)
+fertility <- fertility %>%
+  left_join(literacy, by ="name")
+fertility$women_men_literacy_ratio[is.na(fertility$women_men_literacy_ratio)] <- fertility$women_men_literacy_ratioNEW
+fertility <- subset(fertility, select=-c(women_men_literacy_ratioNEW))
+summary(fertility$women_men_literacy_ratio)
+
+plot(fertility$women_men_literacy_ratio, ylab="Literacy Ratio of Women to Men")
+hist(fertility$women_men_literacy_ratio, xlab="Literacy Ratio of Women to Men",main="Histogram of Literacy Ratio of Women to Men")
+boxplot(fertility$women_men_literacy_ratio, main="Literacy Ratio of Women to Men")
+ggplot(fertility, aes(x=region,y=women_men_literacy_ratio)) + geom_boxplot(aes(color=region)) + theme(axis.text.x = element_text(angle=90))
+summary(fertility$women_men_literacy_ratio)
+
+fertility <- fertility %>%
+  group_by(region) %>%
+  mutate(med_lit=median(women_men_literacy_ratio,na.rm=TRUE))
+fertility$women_men_literacy_ratio[is.na(fertility$women_men_literacy_ratio)] <- fertility$med_lit
+fertility = subset(fertility, select=-c(med_lit))
+summary(fertility)
+head(fertility)
+
+plot(fertility$net_migration_per_1000, ylab="Net Migration Per 1000")
+hist(fertility$net_migration_per_1000, xlab="Net Migration Per 1000",main="Histogram of Net Migration Per 1000")
+boxplot(fertility$net_migration_per_1000, main="Percentage of Net Migration Per 1000")
+ggplot(fertility, aes(x=region,y=net_migration_per_1000)) + geom_boxplot(aes(color=region)) + theme(axis.text.x = element_text(angle=90))
+
+fertility <- fertility %>%
+  group_by(region) %>%
+  mutate(med_mig=median(net_migration_per_1000,na.rm=TRUE))
+fertility$net_migration_per_1000[is.na(fertility$net_migration_per_1000)] <- fertility$med_mig
+fertility = subset(fertility, select=-c(med_mig))
+
+fertility_variables <- fertility
+fertility_variables <- subset(fertility_variables, select=-c(region,name,region_num,country_code))
+
+correlation <- cor(fertility_variables, method = "pearson",use="complete.obs")
+corrplot(correlation, type="upper", method="color")
+
+set.seed(15)
+n <- nrow(fertility_variables)
+shuffle_df1 <- fertility_variables[sample(n),]
+train_indeces <- 1:round(0.6*n)
+train1 <- shuffle_df1[train_indeces,]
+test_indeces <- (round(.6*n)+1):n
+test1 <- shuffle_df1[test_indeces,]
+
+fert_lm <- lm(fertility_rate_children_per_woman ~ ., data=train1)
+summary(fert_lm)
+
+fert_lm <- update(fert_lm, .~. -female_employment_to_pop_ratio, data = train1)
+summary(fert_lm)
+
+fert_lm <- update(fert_lm, .~. -employment_to_pop_ratio, data = train1)
+summary(fert_lm)
+
+fert_lm <- update(fert_lm, .~. -maternal_mortality, data = train1)
+summary(fert_lm)
+
+fert_lm <- update(fert_lm, .~. -carbon_dioxide_emissions, data = train1)
+summary(fert_lm)
+
+fert_lm <- update(fert_lm, .~. -net_migration_per_1000, data = train1)
+summary(fert_lm)
+
+fert_lm <- update(fert_lm, .~. -urban_pop_in_slums, data = train1)
+summary(fert_lm)
+
+qqnorm(resid(fert_lm))
+qqline(resid(fert_lm))
+
+pred1 <- predict(fert_lm, newdata=test1, type="response")
+error <- pred1-test1$fertility_rate_children_per_woman
+rmse1 <- sqrt(mean(error^2))
+rmse1
+
+vif(fert_lm)
+
+ggplot()+geom_point(aes(x=seq_along(cooks.distance(fert_lm)),y=cooks.distance(fert_lm)),color='blue',shape=20,size=2)+ theme(panel.background = element_rect(fill = '#d3dded'))+labs(x='Linear Regression Model',y="Cook's Distance")+ylim(0,.004)
+
+prin_comp <- prcomp(train1, scale. = T)
+
+train.data <- data.frame(fert = train1$fertility_rate_children_per_woman, prin_comp$x)
+
+fert_rpart <- rpart(fert ~ .,data = train.data, method = "anova")
+
+test.data <- predict(prin_comp, newdata = test1)
+test.data <- as.data.frame(test.data)
+
+pred2 <- predict(fert_rpart, test.data)
+
+error <- pred2-test1$fertility_rate_children_per_woman
+rmse2 <- sqrt(mean(error^2))
+rmse2
+
+std_dev <- prin_comp$sdev
+pr_var <- std_dev^2
+prop_varex <- pr_var/sum(pr_var)
+plot(prop_varex, xlab = "Principal Component",
+             ylab = "Proportion of Variance Explained",
+             type = "b")
+
+circle <- function(center = c(0, 0), npoints = 100) {
+    r = 1
+    tt = seq(0, 2 * pi, length = npoints)
+    xx = center[1] + r * cos(tt)
+    yy = center[1] + r * sin(tt)
+    return(data.frame(x = xx, y = yy))
+}
+corcir = circle(c(0, 0), npoints = 100)
+
+correlations = as.data.frame(cor(train1, prin_comp$x))
+
+arrows = data.frame(x1 = c(0,0,0,0,0,0,0,0,0,0,0), y1 = c(0,0,0,0,0,0,0,0,0,0,0), x2 = correlations$PC1, 
+    y2 = correlations$PC2)
+
+ggplot() + geom_path(data = corcir, aes(x = x, y = y), colour = "gray65") + 
+    geom_segment(data = arrows, aes(x = x1, y = y1, xend = x2, yend = y2), colour = "gray65") + 
+    geom_text(data = correlations, aes(x = PC1, y = PC2, label = rownames(correlations))) + 
+    geom_hline(yintercept = 0, colour = "gray65") + geom_vline(xintercept = 0, 
+    colour = "gray65") + xlim(-1.1, 1.1) + ylim(-1.1, 1.1) + labs(x = "pc1 aixs", y = "pc2 axis") + ggtitle("PCA - Model 2 - Circle of correlations")
+
+fertility3 <- fertility
+fertility3 <- subset(fertility3, select=c(fertility_rate_children_per_woman,urban_pop_in_slums, unmet_family_planning_need, percent_children_malaria_nets, women_men_literacy_ratio, cell_subs_per_100))
+
+set.seed(25)
+n <- nrow(fertility_variables)
+shuffle_df3 <- fertility3[sample(n),]
+train_indeces <- 1:round(0.6*n)
+train3 <- shuffle_df3[train_indeces,]
+test_indeces <- (round(.6*n)+1):n
+test3 <- shuffle_df3[test_indeces,]
+
+prin_comp3 <- prcomp(train3, scale. = T)
+
+train.data3 <- data.frame(fert3 = train3$fertility_rate_children_per_woman, prin_comp3$x)
+
+fert_rpart3 <- rpart(fert3 ~ .,data = train.data3, method = "anova")
+
+test.data3 <- predict(prin_comp3, newdata = test3)
+test.data3 <- as.data.frame(test.data3)
+
+pred3 <- predict(fert_rpart3, test.data3)
+
+error <- pred3-test3$fertility_rate_children_per_woman
+rmse3 <- sqrt(mean(error^2))
+rmse3
+
+std_dev3 <- prin_comp3$sdev
+pr_var3 <- std_dev3^2
+prop_varex3 <- pr_var3/sum(pr_var3)
+plot(prop_varex3, xlab = "Principal Component",
+             ylab = "Proportion of Variance Explained",
+             type = "b")
+
+circle <- function(center = c(0, 0), npoints = 100) {
+    r = 1
+    tt = seq(0, 2 * pi, length = npoints)
+    xx = center[1] + r * cos(tt)
+    yy = center[1] + r * sin(tt)
+    return(data.frame(x = xx, y = yy))
+}
+corcir = circle(c(0, 0), npoints = 100)
+
+correlations3 = as.data.frame(cor(train3, prin_comp3$x))
+
+arrows = data.frame(x1 = c(0,0,0,0,0,0), y1 = c(0,0,0,0,0,0), x2 = correlations3$PC1, 
+    y2 = correlations3$PC2)
+
+ggplot() + geom_path(data = corcir, aes(x = x, y = y), colour = "gray65") + 
+    geom_segment(data = arrows, aes(x = x1, y = y1, xend = x2, yend = y2), colour = "gray65") + 
+    geom_text(data = correlations3, aes(x = PC1, y = PC2, label = rownames(correlations3))) + 
+    geom_hline(yintercept = 0, colour = "gray65") + geom_vline(xintercept = 0, 
+    colour = "gray65") + xlim(-1.1, 1.1) + ylim(-1.1, 1.1) + labs(x = "pc1 aixs", y = "pc2 axis") + ggtitle("PCA - Model 3 - Circle of correlations")
+
+prin_comp3$rotation
+
+code reference https://rstudio-pubs-static.s3.amazonaws.com/2897_9220b21cfc0c43a396ff9abf122bb351.html
+
+if (!require('leaps')) (install.packages('leaps'))
+
+library(leaps)
+
+regsubsets.out <-
+    regsubsets(fertility_rate_children_per_woman ~ .,
+               data = train1,
+               nbest = 1,       # 1 best model for each number of predictors
+               nvmax = NULL,    # NULL for no limit on number of variables
+               force.in = NULL, force.out = NULL,
+               method = "exhaustive")
+
+summary.out <- summary(regsubsets.out)
+
+which.max(summary.out$adjr2)
+
+summary.out$which[5,]
+
+summary(best.model <- lm(fertility_rate_children_per_woman ~ 
+                   cell_subs_per_100 + 
+                   percent_children_malaria_nets + 
+                   urban_pop_in_slums + 
+                   unmet_family_planning_need + 
+                   women_men_literacy_ratio, data = train1))
+
+pred.model4 <- predict(best.model, newdata=test1, type="response")
+error.model4 <- pred.model4-test1$fertility_rate_children_per_woman
+rmse.model4 <- sqrt(mean(error.model4^2))
+rmse.model4
+
+if (!require('pscl')) (install.packages('pscl'))
+if (!require('MASS')) (install.packages('MASS'))
+library(MASS)
+library(pscl)
+
+count.train1 <- train1
+count.test1 <- test1
+
+int.min.train1 <- (min(count.train1$fertility_rate_children_per_woman) * 1000)
+int.min.test1 <- (min(count.test1$fertility_rate_children_per_woman) * 1000)
+
+count.train1$fertility_rate_children_per_woman <- 
+  (count.train1$fertility_rate_children_per_woman * 1000) - int.min.train1
+count.test1$fertility_rate_children_per_woman <- 
+  (count.test1$fertility_rate_children_per_woman * 1000) - int.min.test1
+
+summary(poisson.model <- glm(fertility_rate_children_per_woman ~ ., 
+                          data=count.train1, family="poisson"), trace = FALSE)
+
+summary(nb.model <- step(glm.nb(fertility_rate_children_per_woman ~ . , 
+                            data = count.train1), trace = FALSE))
+
+summary(zeroinf.model <- zeroinfl(fertility_rate_children_per_woman ~ . 
+                          |percent_children_malaria_nets, 
+                          data = count.train1))
+
+pred.model5 <- ((predict(poisson.model, newdata=count.test1, type="response") +
+                    + int.min.test1) / 1000)
+error.model5 <- ((pred.model5 + int.min.test1) / 1000)
+                    - test1$fertility_rate_children_per_woman
+rmse.model5 <- sqrt(mean(error.model5^2))
+
+pred.model6 <- ((predict(nb.model, newdata=count.test1, type="response") +
+                    + int.min.test1) / 1000)
+error.model6 <- ((pred.model6 + int.min.test1) / 1000)
+                    - test1$fertility_rate_children_per_woman
+rmse.model6 <- sqrt(mean(error.model6^2))
+
+pred.model7 <- ((predict(zeroinf.model, newdata=count.test1, type="response") +
+                    + int.min.test1) / 1000)
+error.model7 <- ((pred.model7 + int.min.test1) / 1000)
+                    - test1$fertility_rate_children_per_woman
+rmse.model7 <- sqrt(mean(error.model7^2))
+
+count.models <- c("Poisson", "Negative Binomial", "Zero Inflated")
+count.rmse <- c(rmse.model5, rmse.model6, rmse.model7)
+count.prediction.results <- as.data.frame(cbind(count.models,count.rmse))
+count.prediction.results
+
+© 2018 GitHub, Inc.
+Terms
+Privacy
+Security
+Status
+Help
+Contact GitHub
+Pricing
+API
+Training
+Blog
+About
+Press h to open a hovercard with more details.
